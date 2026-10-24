@@ -1,0 +1,71 @@
+# ==========================================
+# SpringDocs Assistant - Git Ignore Rules
+# ==========================================
+
+# Secrets and Environment Variables
+.env
+.env.*
+!.env.example
+
+# Datasets and Local Storage (Proibido commitar dados brutos ou bancos locais)
+data/raw/
+data/processed/
+data/cache/
+*.parquet
+*.arrow
+*.tar.gz
+*.zip
+
+# Vector DB & Persistent Stores
+.qdrant_data/
+qdrant_storage/
+*.db
+*.sqlite
+*.sqlite3
+
+# Model Weights and Fine-Tuning Checkpoints
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+models/checkpoints/
+models/exported/
+lora_output/
+unsloth_output/
+
+# Python Virtual Environments & Packages
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing and Linting Caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Logs and Task Outputs
+*.log
+logs/
+
+# IDE and Editor configurations
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

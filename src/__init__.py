@@ -1,0 +1,1 @@
+"""SpringDocs Assistant root package."""
