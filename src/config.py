@@ -67,7 +67,7 @@ class Settings(BaseSettings):
         description="Sampling temperature for LLM responses",
     )
     llm_timeout_seconds: float = Field(
-        default=60.0,
+        default=180.0,
         gt=0.0,
         description="Request timeout in seconds for Ollama LLM calls",
     )

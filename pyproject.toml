@@ -48,7 +48,7 @@ select = [
     "C4",  # flake8-comprehensions
     "SIM", # flake8-simplify
 ]
-ignore = []
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -16,6 +16,15 @@ services:
       timeout: 5s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: springdocs-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_storage:/root/.ollama
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -25,20 +34,22 @@ services:
       - "8000:8000"
     environment:
       - QDRANT_URL=http://qdrant:6333
-      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_URL=http://ollama:11434
       - COLLECTION_NAME=spring_docs_v3_4
       - SPRING_VERSION=3.4
       - EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
       - LLM_MODEL=qwen2.5:3b
       - TOP_K=5
       - SCORE_THRESHOLD=0.35
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       qdrant:
         condition: service_healthy
+      ollama:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
   qdrant_storage:
     name: springdocs_qdrant_storage
+  ollama_storage:
+    name: springdocs_ollama

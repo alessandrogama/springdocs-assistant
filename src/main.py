@@ -4,10 +4,13 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, status
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from src.config import settings
+from src.rag.models import AskRequest, AskResponse
+from src.rag.service import RagService
 
 
 class ServiceStatus(BaseModel):
@@ -29,10 +32,16 @@ class HealthResponse(BaseModel):
     ollama: ServiceStatus = Field(description="Ollama connection health")
 
 
+rag_service: RagService | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager for startup and shutdown routines."""
+    global rag_service
+    rag_service = RagService()
     yield
+    rag_service = None
 
 
 app: FastAPI = FastAPI(
@@ -43,6 +52,19 @@ app: FastAPI = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Global exception handler returning structured error JSON."""
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "InternalServerError",
+            "message": str(exc),
+            "path": request.url.path,
+        },
+    )
 
 
 @app.get("/", tags=["Root"])
@@ -105,3 +127,24 @@ async def health() -> HealthResponse:
         qdrant=qdrant_status,
         ollama=ollama_status,
     )
+
+
+@app.post(
+    "/ask",
+    response_model=AskResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["RAG"],
+)
+async def ask(request: AskRequest) -> AskResponse:
+    """Answer technical Spring Boot question using hybrid RAG retrieval."""
+    global rag_service
+    if rag_service is None:
+        rag_service = RagService()
+
+    try:
+        return await rag_service.answer_question(request)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error executing RAG pipeline: {exc}",
+        ) from exc
