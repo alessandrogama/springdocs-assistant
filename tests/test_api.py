@@ -1,4 +1,4 @@
-"""Unit tests for FastAPI endpoints (/health, /ingest, /ask)."""
+"""Unit tests for FastAPI endpoints (/health, /ingest, /ask, /) and lifecycle."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -6,7 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 import src.api.main as api_main
-from src.api.main import app
+from src.api.main import app, lifespan
 from src.api.schemas import (
     AskRequest,
     AskResponse,
@@ -16,6 +16,30 @@ from src.api.schemas import (
 )
 from src.ingestion.models import IngestionStats
 from src.rag.models import RetrievedChunk
+
+
+@pytest.mark.anyio
+async def test_root_endpoint() -> None:
+    """Validate GET / returns service information."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["service"] == "SpringDocs Assistant"
+        assert "/docs" in data["docs_url"]
+
+
+@pytest.mark.anyio
+async def test_lifespan_initialization_and_shutdown() -> None:
+    """Validate lifespan initializes and closes singletons cleanly."""
+    async with lifespan(app):
+        assert api_main.hybrid_retriever is not None
+        assert api_main.ollama_generator is not None
+        assert api_main.ingestion_pipeline is not None
+
+    assert api_main.hybrid_retriever is None
+    assert api_main.ollama_generator is None
+    assert api_main.ingestion_pipeline is None
 
 
 @pytest.mark.anyio
@@ -64,7 +88,28 @@ async def test_health_endpoint_service_degraded() -> None:
 
 
 @pytest.mark.anyio
-async def test_ingest_endpoint() -> None:
+async def test_health_endpoint_returns_503_on_http_error_codes() -> None:
+    """Validate /health returns 503 when downstream returns HTTP 500."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 500
+
+    mock_client_instance = AsyncMock()
+    mock_client_instance.get.return_value = mock_resp
+
+    mock_client_ctx = MagicMock()
+    mock_client_ctx.__aenter__.return_value = mock_client_instance
+    mock_client_ctx.__aexit__.return_value = None
+
+    with patch("src.api.main.httpx.AsyncClient", return_value=mock_client_ctx):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/health")
+            assert response.status_code == 503
+            data = response.json()
+            assert data["status"] == "degraded"
+
+
+@pytest.mark.anyio
+async def test_ingest_endpoint_success() -> None:
     """Validate /ingest executes pipeline and returns IngestResponse."""
     mock_stats = IngestionStats(
         total_documents=9,
@@ -89,6 +134,19 @@ async def test_ingest_endpoint() -> None:
             assert ingest_res.updated == 0
             assert ingest_res.skipped == 0
             assert ingest_res.total_chunks == 23
+
+
+@pytest.mark.anyio
+async def test_ingest_endpoint_failure_raises_500() -> None:
+    """Validate /ingest returns HTTP 500 when pipeline raises an exception."""
+    mock_pipeline = MagicMock()
+    mock_pipeline.run.side_effect = RuntimeError("Database down")
+
+    with patch.object(api_main, "ingestion_pipeline", mock_pipeline):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/ingest")
+            assert response.status_code == 500
+            assert "Database down" in response.text
 
 
 @pytest.mark.anyio
@@ -162,6 +220,43 @@ async def test_ask_endpoint_empty_chunks_abstention() -> None:
             assert ask_res.citations == []
             assert ask_res.chunks_used == []
             assert ask_res.telemetry.generation_ms == 0.0
+
+
+@pytest.mark.anyio
+async def test_ask_endpoint_empty_question_raises_422() -> None:
+    """Validate /ask returns HTTP 422 when question is whitespace or empty."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/ask", json={"question": "   "})
+        assert response.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_ask_endpoint_generator_failure_raises_500() -> None:
+    """Validate /ask returns HTTP 500 when generator raises an exception."""
+    mock_chunk = RetrievedChunk(
+        id="c-1",
+        content="Some content",
+        score=0.9,
+        doc_url="https://doc",
+        section_title="Sec",
+        module="core",
+        spring_version="3.4.0",
+        has_code=False,
+    )
+    mock_retriever = MagicMock()
+    mock_retriever.retrieve.return_value = [mock_chunk]
+
+    mock_generator = MagicMock()
+    mock_generator.generate_response = AsyncMock(side_effect=RuntimeError("Ollama crashed"))
+
+    with (
+        patch.object(api_main, "hybrid_retriever", mock_retriever),
+        patch.object(api_main, "ollama_generator", mock_generator),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/ask", json={"question": "Test question"})
+            assert response.status_code == 500
+            assert "Ollama generation failure" in response.text
 
 
 def test_ask_request_query_reconciliation() -> None:

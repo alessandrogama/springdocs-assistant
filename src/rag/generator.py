@@ -58,3 +58,8 @@ class OllamaGenerator:
         message_content = data.get("message", {}).get("content", "").strip()
 
         return message_content, generation_latency_ms
+
+    async def close(self) -> None:
+        """Close open resources (no-op when using per-request clients)."""
+        pass
+

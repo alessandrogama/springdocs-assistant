@@ -59,7 +59,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/mydb
     username: postgres
-    password: secret
+    password:b secret
     hikari:
       maximum-pool-size: 10
 server:

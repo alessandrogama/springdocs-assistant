@@ -54,6 +54,8 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .coverage
+.coverage.*
+coverage.md
 htmlcov/
 
 # Logs and Task Outputs
