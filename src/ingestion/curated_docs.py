@@ -286,4 +286,79 @@ management:
 Traces and spans automatically correlate with logs using `logging.pattern.level` with traceId and spanId injection.
 """,
     ),
+    RawDocument(
+        doc_url="https://docs.spring.io/spring-boot/reference/io/rest-client.html",
+        spring_version="3.4",
+        module="web",
+        title="Calling REST Services: RestClient vs WebClient",
+        content="""# Calling REST Services: RestClient vs WebClient
+
+Spring Boot provides auto-configured builders for making HTTP requests to external REST services: RestClient, WebClient, and RestTemplate.
+
+## RestClient vs WebClient Comparison
+In Spring Boot 3.2+ and 3.4, `RestClient` is the recommended synchronous, blocking HTTP client. It offers a modern fluent API similar to `WebClient`, but without requiring reactive dependencies (Project Reactor):
+
+1. **RestClient**: Synchronous and blocking. Designed for Spring MVC applications. Replaces the legacy `RestTemplate` with a fluent, declarative API.
+2. **WebClient**: Asynchronous and non-blocking. Part of `spring-boot-starter-webflux`. Ideal for reactive microservices and streaming HTTP calls.
+3. **RestTemplate**: Legacy synchronous client maintained in maintenance mode. New code should use `RestClient`.
+
+## Using RestClient in Spring Boot 3.x
+Inject the pre-configured `RestClient.Builder` bean to create customized client instances:
+
+```java
+package com.example.demo.client;
+
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+
+@Service
+public class GitHubClientService {
+
+    private final RestClient restClient;
+
+    public GitHubClientService(RestClient.Builder builder) {
+        this.restClient = builder
+            .baseUrl("https://api.github.com")
+            .defaultHeader("Accept", "application/vnd.github.v3+json")
+            .build();
+    }
+
+    public RepositoryResponse getRepository(String owner, String repo) {
+        return this.restClient.get()
+            .uri("/repos/{owner}/{repo}", owner, repo)
+            .retrieve()
+            .body(RepositoryResponse.class);
+    }
+}
+```
+
+## Using WebClient in Reactive Applications
+For reactive applications, use `WebClient.Builder`:
+
+```java
+package com.example.demo.client;
+
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+@Service
+public class ReactiveGitHubService {
+
+    private final WebClient webClient;
+
+    public ReactiveGitHubService(WebClient.Builder builder) {
+        this.webClient = builder.baseUrl("https://api.github.com").build();
+    }
+
+    public Mono<RepositoryResponse> getRepository(String owner, String repo) {
+        return this.webClient.get()
+            .uri("/repos/{owner}/{repo}", owner, repo)
+            .retrieve()
+            .bodyToMono(RepositoryResponse.class);
+    }
+}
+```
+""",
+    ),
 ]

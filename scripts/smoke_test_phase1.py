@@ -13,7 +13,12 @@ TEST_CASES = [
         "category": "factual",
         "topic": "Actuator Health",
         "query": "Como expor e habilitar detalhes do endpoint /actuator/health no Spring Boot 3.x?",
-        "expected_keywords": ["actuator", "health", "management.endpoint.health.show-details", "always"],
+        "expected_keywords": [
+            "actuator",
+            "health",
+            "management.endpoint.health.show-details",
+            "always",
+        ],
     },
     {
         "id": "Q2",
@@ -99,7 +104,9 @@ async def run_smoke_test(api_url: str = "http://localhost:8000") -> dict[str, An
             print(f"[*] Health Details: {health_res.text}")
         except Exception as exc:
             print(f"[-] Could not connect to {api_url}/health: {exc}")
-            print("[-] Ensure the FastAPI application is running (e.g. `uv run uvicorn src.main:app --port 8000`).")
+            print(
+                "[-] Ensure the FastAPI application is running (e.g. `uv run uvicorn src.main:app --port 8000`)."
+            )
             sys.exit(1)
 
     results = []
@@ -157,40 +164,57 @@ async def run_smoke_test(api_url: str = "http://localhost:8000") -> dict[str, An
                     status_str = "FAIL (Hallucinated)"
 
             print(f"     Status: {status_str}", flush=True)
-            print(f"     Latency: {tot_ms}ms (Retrieval: {ret_ms}ms, Generation: {gen_ms}ms)", flush=True)
+            print(
+                f"     Latency: {tot_ms}ms (Retrieval: {ret_ms}ms, Generation: {gen_ms}ms)",
+                flush=True,
+            )
             if citations:
                 print(f"     Citations: {citations}", flush=True)
             snippet = answer.replace("\n", " ")[:160]
             print(f"     Answer Snippet: {snippet}...", flush=True)
 
-            results.append({
-                "id": qid,
-                "category": cat,
-                "topic": topic,
-                "status": status_str,
-                "retrieval_latency_ms": ret_ms,
-                "generation_latency_ms": gen_ms,
-                "total_latency_ms": tot_ms,
-                "citations": citations,
-                "is_abstained": is_abstained,
-                "answer": answer,
-            })
+            results.append(
+                {
+                    "id": qid,
+                    "category": cat,
+                    "topic": topic,
+                    "status": status_str,
+                    "retrieval_latency_ms": ret_ms,
+                    "generation_latency_ms": gen_ms,
+                    "total_latency_ms": tot_ms,
+                    "citations": citations,
+                    "is_abstained": is_abstained,
+                    "answer": answer,
+                }
+            )
 
     total_factual = sum(1 for t in TEST_CASES if t["category"] == "factual")
     total_abstention = sum(1 for t in TEST_CASES if t["category"] == "abstention")
 
     citation_rate = round((factual_citations_count / total_factual) * 100, 1)
     abstention_rate = round((abstention_success_count / total_abstention) * 100, 1)
-    avg_retrieval = round(sum(retrieval_latencies) / len(retrieval_latencies), 2) if retrieval_latencies else 0.0
-    avg_generation = round(sum(generation_latencies) / len(generation_latencies), 2) if generation_latencies else 0.0
+    avg_retrieval = (
+        round(sum(retrieval_latencies) / len(retrieval_latencies), 2)
+        if retrieval_latencies
+        else 0.0
+    )
+    avg_generation = (
+        round(sum(generation_latencies) / len(generation_latencies), 2)
+        if generation_latencies
+        else 0.0
+    )
     avg_total = round(sum(total_latencies) / len(total_latencies), 2) if total_latencies else 0.0
 
     print("\n" + "=" * 80)
     print(" PHASE 1 EVALUATION SUMMARY")
     print("=" * 80)
     print(f"Total Questions Evaluated : {len(TEST_CASES)}")
-    print(f"Correct Citation Rate     : {citation_rate}% ({factual_citations_count}/{total_factual})")
-    print(f"Safe Abstention Rate      : {abstention_rate}% ({abstention_success_count}/{total_abstention})")
+    print(
+        f"Correct Citation Rate     : {citation_rate}% ({factual_citations_count}/{total_factual})"
+    )
+    print(
+        f"Safe Abstention Rate      : {abstention_rate}% ({abstention_success_count}/{total_abstention})"
+    )
     print(f"Average Retrieval Latency : {avg_retrieval} ms")
     print(f"Average Generation Latency: {avg_generation} ms")
     print(f"Average Total Latency     : {avg_total} ms")

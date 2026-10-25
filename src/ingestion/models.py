@@ -37,6 +37,17 @@ class IngestionStats(BaseModel):
     total_documents: int = 0
     total_chunks: int = 0
     chunks_with_code: int = 0
-    new_or_updated_chunks: int = 0
-    unchanged_chunks: int = 0
+    inserted: int = 0
+    updated: int = 0
+    skipped: int = 0
     duration_seconds: float = 0.0
+
+    @property
+    def new_or_updated_chunks(self) -> int:
+        """Alias for combined inserted and updated chunks."""
+        return self.inserted + self.updated
+
+    @property
+    def unchanged_chunks(self) -> int:
+        """Alias for skipped chunks."""
+        return self.skipped
