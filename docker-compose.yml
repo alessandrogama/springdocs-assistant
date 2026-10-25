@@ -42,6 +42,9 @@ services:
       - TOP_K=5
       - SCORE_THRESHOLD=0.35
     volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
       - ./data:/app/data
       - ./docs:/app/docs
       - fastembed_cache:/root/.cache/fastembed

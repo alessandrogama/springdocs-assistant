@@ -4,27 +4,36 @@ import pytest
 from pydantic import ValidationError
 
 
-def test_settings_default_values_without_env_file() -> None:
-    """Validate that settings can be imported and load all default values without .env."""
-    from src.config import Settings, settings
+def test_settings_default_values_without_env_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Validate that settings loads all default values cleanly."""
+    from src.config import Settings
 
-    # Verify global instance
-    assert settings.qdrant_url == "http://localhost:6333"
-    assert settings.ollama_url == "http://localhost:11434"
-    assert settings.collection_name == "spring_docs_v3_4"
-    assert settings.spring_version == "3.4.0"
-    assert settings.embedding_model == "intfloat/multilingual-e5-small"
-    assert settings.embedding_dim == 384
-    assert settings.llm_model == "qwen2.5:3b"
-    assert settings.llm_temperature == 0.1
-    assert settings.top_k == 5
-    assert settings.score_threshold == 0.35
-    assert settings.rerank_enabled is False
+    env_vars = [
+        "QDRANT_URL",
+        "OLLAMA_URL",
+        "COLLECTION_NAME",
+        "SPRING_VERSION",
+        "EMBEDDING_MODEL",
+        "EMBEDDING_DIM",
+        "LLM_MODEL",
+        "TOP_K",
+        "SCORE_THRESHOLD",
+    ]
+    for var in env_vars:
+        monkeypatch.delenv(var, raising=False)
 
-    # Verify fresh instance behaves identically
-    custom = Settings()
-    assert custom.qdrant_url == "http://localhost:6333"
-    assert custom.collection_name == "spring_docs_v3_4"
+    default_settings = Settings(_env_file=None)
+    assert default_settings.qdrant_url == "http://localhost:6333"
+    assert default_settings.ollama_url == "http://localhost:11434"
+    assert default_settings.collection_name == "spring_docs_v3_4"
+    assert default_settings.spring_version == "3.4.0"
+    assert default_settings.embedding_model == "intfloat/multilingual-e5-small"
+    assert default_settings.embedding_dim == 384
+    assert default_settings.llm_model == "qwen2.5:3b"
+    assert default_settings.llm_temperature == 0.1
+    assert default_settings.top_k == 5
+    assert default_settings.score_threshold == 0.35
+    assert default_settings.rerank_enabled is False
 
 
 def test_settings_environment_override(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -17,11 +17,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Copy project manifest
 COPY pyproject.toml ./
 
-# Install dependencies into system Python before copying source to leverage layer cache
-RUN uv pip install --system --no-cache -r pyproject.toml
+# Install dependencies including dev tools into system Python before copying code to leverage layer cache
+RUN uv pip install --system --no-cache -r pyproject.toml --extra dev
 
-# Copy application source code
+# Copy application source code, tests and scripts
 COPY src/ ./src/
+COPY tests/ ./tests/
+COPY scripts/ ./scripts/
 
 EXPOSE 8000
 
