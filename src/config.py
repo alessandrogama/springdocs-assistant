@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Service URLs
     qdrant_url: str = Field(
         default="http://localhost:6333",
-        description="Qdrant vector database URL",
+        description="Qdrant vector database URL (reads QDRANT_URL)",
     )
     qdrant_api_key: str | None = Field(
         default=None,
@@ -29,25 +29,25 @@ class Settings(BaseSettings):
     )
     ollama_url: str = Field(
         default="http://localhost:11434",
-        description="Ollama local LLM API URL",
+        description="Ollama local LLM API URL (reads OLLAMA_URL)",
     )
 
     # Collection and Spring Boot metadata
     collection_name: str = Field(
         default="spring_docs_v3_4",
-        description="Name of the Qdrant collection for indexed chunks",
+        description="Name of the Qdrant collection for indexed chunks (reads COLLECTION_NAME)",
     )
     spring_version: str = Field(
-        default="3.4",
-        description="Spring Boot documentation version to index and query",
+        default="3.4.0",
+        description="Spring Boot documentation version to index and query (reads SPRING_VERSION)",
     )
 
     # Embedding model
     embedding_model: str = Field(
-        default="BAAI/bge-small-en-v1.5",
+        default="intfloat/multilingual-e5-small",
         description=(
-            "Embedding model name "
-            "(e.g. BAAI/bge-small-en-v1.5, intfloat/multilingual-e5-small, BAAI/bge-m3)"
+            "Multilingual embedding model name (reads EMBEDDING_MODEL) "
+            "(e.g. intfloat/multilingual-e5-small, BAAI/bge-small-en-v1.5, BAAI/bge-m3)"
         ),
     )
     embedding_dim: int = Field(
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     # LLM generation configuration
     llm_model: str = Field(
         default="qwen2.5:3b",
-        description="Ollama model tag to use for answer generation",
+        description="Ollama model tag to use for answer generation (reads LLM_MODEL)",
     )
     llm_temperature: float = Field(
         default=0.1,
@@ -76,13 +76,13 @@ class Settings(BaseSettings):
     top_k: int = Field(
         default=5,
         gt=0,
-        description="Number of chunks retrieved per query",
+        description="Number of chunks retrieved per query (reads TOP_K)",
     )
     score_threshold: float = Field(
         default=0.35,
         ge=0.0,
         le=1.0,
-        description="Minimum similarity score threshold for retrieved chunks",
+        description="Minimum similarity score threshold for retrieved chunks (reads SCORE_THRESHOLD)",
     )
     rerank_enabled: bool = Field(
         default=False,

@@ -12,8 +12,8 @@ def test_settings_default_values_without_env_file() -> None:
     assert settings.qdrant_url == "http://localhost:6333"
     assert settings.ollama_url == "http://localhost:11434"
     assert settings.collection_name == "spring_docs_v3_4"
-    assert settings.spring_version == "3.4"
-    assert settings.embedding_model == "BAAI/bge-small-en-v1.5"
+    assert settings.spring_version == "3.4.0"
+    assert settings.embedding_model == "intfloat/multilingual-e5-small"
     assert settings.embedding_dim == 384
     assert settings.llm_model == "qwen2.5:3b"
     assert settings.llm_temperature == 0.1

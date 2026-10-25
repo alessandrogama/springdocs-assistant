@@ -112,8 +112,11 @@ class IngestionPipeline:
 
 def main() -> None:
     """CLI entrypoint for running ingestion pipeline."""
+    import sys
+
+    force = "--force" in sys.argv or "-f" in sys.argv
     pipeline = IngestionPipeline()
-    pipeline.run()
+    pipeline.run(force_fetch=force)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from src.ingestion.models import RawDocument
 SPRING_BOOT_3_4_DOCS: list[RawDocument] = [
     RawDocument(
         doc_url="https://docs.spring.io/spring-boot/reference/actuator/endpoints.html",
-        spring_version="3.4",
+        spring_version="3.4.0",
         module="actuator",
         title="Production-ready Features: Endpoints",
         content="""# Production-ready Features: Endpoints
@@ -36,7 +36,7 @@ Liveness and Readiness probes are automatically configured when running in a Kub
     ),
     RawDocument(
         doc_url="https://docs.spring.io/spring-boot/reference/web/servlet.html",
-        spring_version="3.4",
+        spring_version="3.4.0",
         module="web",
         title="Developing Web Applications: Spring MVC",
         content="""# Developing Web Applications: Spring MVC
@@ -78,7 +78,7 @@ Spring Boot auto-configures an `ObjectMapper` instance with sensible defaults. A
     ),
     RawDocument(
         doc_url="https://docs.spring.io/spring-boot/reference/data/sql.html",
-        spring_version="3.4",
+        spring_version="3.4.0",
         module="data",
         title="Data Access: SQL Databases & Connection Pools",
         content="""# Data Access: SQL Databases & Connection Pools
@@ -121,7 +121,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     ),
     RawDocument(
         doc_url="https://docs.spring.io/spring-boot/reference/web/spring-security.html",
-        spring_version="3.4",
+        spring_version="3.4.0",
         module="security",
         title="Security: Spring Security Configuration",
         content="""# Security: Spring Security Configuration
@@ -162,7 +162,7 @@ public class SecurityConfiguration {
     ),
     RawDocument(
         doc_url="https://docs.spring.io/spring-boot/reference/features/developing-auto-configuration.html",
-        spring_version="3.4",
+        spring_version="3.4.0",
         module="core",
         title="Core Features: Auto-configuration",
         content="""# Core Features: Auto-configuration
@@ -198,7 +198,7 @@ public class CustomDatabaseAutoConfiguration {
     ),
     RawDocument(
         doc_url="https://docs.spring.io/spring-boot/reference/features/external-config.html",
-        spring_version="3.4",
+        spring_version="3.4.0",
         module="core",
         title="Core Features: Externalized Configuration",
         content="""# Core Features: Externalized Configuration
@@ -237,7 +237,7 @@ Enable binding using `@ConfigurationPropertiesScan` on your `@SpringBootApplicat
     ),
     RawDocument(
         doc_url="https://docs.spring.io/spring-boot/reference/features/spring-application.html#features.spring-application.virtual-threads",
-        spring_version="3.4",
+        spring_version="3.4.0",
         module="core",
         title="Core Features: Virtual Threads",
         content="""# Core Features: Virtual Threads
@@ -263,7 +263,7 @@ When enabled:
     ),
     RawDocument(
         doc_url="https://docs.spring.io/spring-boot/reference/actuator/observability.html",
-        spring_version="3.4",
+        spring_version="3.4.0",
         module="actuator",
         title="Production-ready Features: Observability & Tracing",
         content="""# Production-ready Features: Observability & Tracing
@@ -288,7 +288,7 @@ Traces and spans automatically correlate with logs using `logging.pattern.level`
     ),
     RawDocument(
         doc_url="https://docs.spring.io/spring-boot/reference/io/rest-client.html",
-        spring_version="3.4",
+        spring_version="3.4.0",
         module="web",
         title="Calling REST Services: RestClient vs WebClient",
         content="""# Calling REST Services: RestClient vs WebClient
