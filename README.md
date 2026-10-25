@@ -140,7 +140,7 @@ O histórico completo de testes e benchmarks está documentado em [docs/resultad
 
 ---
 
-## 🔌 Exemplos de Uso da API
+##  Exemplos de Uso da API
 
 ### 1. Pergunta Factual (`POST /ask`)
 **Requisição:**
