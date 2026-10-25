@@ -1,47 +1,78 @@
 """FastAPI application entrypoint for SpringDocs Assistant."""
 
+import re
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 
+from src.api.schemas import (
+    AskRequest,
+    AskResponse,
+    ChunkPreview,
+    Citation,
+    HealthResponse,
+    IngestRequest,
+    IngestResponse,
+    Telemetry,
+)
 from src.config import settings
-from src.rag.models import AskRequest, AskResponse
-from src.rag.service import RagService
+from src.ingestion.pipeline import IngestionPipeline
+from src.rag.generator import OllamaGenerator
+from src.rag.models import RetrievedChunk
+from src.rag.prompt import (
+    ABSTENTION_PHRASE,
+    build_rag_prompt,
+    extract_citations,
+    is_abstention_response,
+)
+from src.rag.retriever import HybridRetriever
+
+# Module-level singletons managed by lifespan
+hybrid_retriever: HybridRetriever | None = None
+ollama_generator: OllamaGenerator | None = None
+ingestion_pipeline: IngestionPipeline | None = None
 
 
-class ServiceStatus(BaseModel):
-    """Status details for an external dependent service."""
+def parse_citations(text: str, chunks: list[RetrievedChunk]) -> list[Citation]:
+    """Parse raw citation strings into structured Citation objects."""
+    raw_citations = extract_citations(text, chunks)
+    pattern = re.compile(r"\[Fonte:\s*([^\]]+?)\s*\((https?://[^\)]+)\)\]")
+    parsed: list[Citation] = []
+    seen: set[str] = set()
 
-    status: str = Field(description="Operational status of the dependency (ok, unreachable, error)")
-    details: str | None = Field(
-        default=None,
-        description="Additional status message or error details",
-    )
+    for raw in raw_citations:
+        match = pattern.search(raw)
+        if match:
+            title = match.group(1).strip()
+            url = match.group(2).strip()
+            if url not in seen:
+                seen.add(url)
+                parsed.append(Citation(title=title, url=url, raw=raw))
+        else:
+            if raw not in seen:
+                seen.add(raw)
+                parsed.append(Citation(title=raw, url="", raw=raw))
 
-
-class HealthResponse(BaseModel):
-    """Health check response schema."""
-
-    status: str = Field(description="Overall API status (ok or degraded)")
-    version: str = Field(default="0.1.0", description="Application version")
-    qdrant: ServiceStatus = Field(description="Qdrant connection health")
-    ollama: ServiceStatus = Field(description="Ollama connection health")
-
-
-rag_service: RagService | None = None
+    return parsed
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan manager for startup and shutdown routines."""
-    global rag_service
-    rag_service = RagService()
+    """Application lifespan manager initializing dependencies."""
+    global hybrid_retriever, ollama_generator, ingestion_pipeline
+    hybrid_retriever = HybridRetriever()
+    ollama_generator = OllamaGenerator()
+    ingestion_pipeline = IngestionPipeline()
     yield
-    rag_service = None
+    if ollama_generator:
+        await ollama_generator.close()
+    hybrid_retriever = None
+    ollama_generator = None
+    ingestion_pipeline = None
 
 
 app: FastAPI = FastAPI(
@@ -80,53 +111,89 @@ async def root() -> dict[str, str]:
 @app.get(
     "/health",
     response_model=HealthResponse,
-    status_code=status.HTTP_200_OK,
     tags=["Monitoring"],
 )
-async def health() -> HealthResponse:
-    """Verify connectivity with Qdrant vector database and Ollama service."""
-    # Check Qdrant
-    qdrant_status: ServiceStatus
+async def health(response: Response) -> HealthResponse | JSONResponse:
+    """Verify real-time connectivity with Qdrant vector database and Ollama service."""
+    details: dict[str, str] = {}
+    qdrant_status = "disconnected"
+    ollama_status = "disconnected"
+
+    # 1. Check Qdrant
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
             headers: dict[str, str] = {}
             if settings.qdrant_api_key:
                 headers["api-key"] = settings.qdrant_api_key
-            resp = await client.get(f"{settings.qdrant_url}/collections", headers=headers)
-            if resp.status_code == 200:
-                qdrant_status = ServiceStatus(status="ok")
+            q_resp = await client.get(f"{settings.qdrant_url}/collections", headers=headers)
+            if q_resp.status_code == 200:
+                qdrant_status = "connected"
             else:
-                qdrant_status = ServiceStatus(
-                    status="error",
-                    details=f"Returned HTTP {resp.status_code}",
-                )
+                details["qdrant"] = f"HTTP {q_resp.status_code}"
     except Exception as exc:  # noqa: BLE001
-        qdrant_status = ServiceStatus(status="unreachable", details=str(exc))
+        details["qdrant"] = f"Connection error: {exc}"
 
-    # Check Ollama
-    ollama_status: ServiceStatus
+    # 2. Check Ollama
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{settings.ollama_url}/api/tags")
-            if resp.status_code == 200:
-                ollama_status = ServiceStatus(status="ok")
+            o_resp = await client.get(f"{settings.ollama_url}/api/tags")
+            if o_resp.status_code == 200:
+                ollama_status = "connected"
             else:
-                ollama_status = ServiceStatus(
-                    status="error",
-                    details=f"Returned HTTP {resp.status_code}",
-                )
+                details["ollama"] = f"HTTP {o_resp.status_code}"
     except Exception as exc:  # noqa: BLE001
-        ollama_status = ServiceStatus(status="unreachable", details=str(exc))
+        details["ollama"] = f"Connection error: {exc}"
 
-    is_healthy = qdrant_status.status == "ok" and ollama_status.status == "ok"
-    overall_status = "ok" if is_healthy else "degraded"
+    is_healthy = qdrant_status == "connected" and ollama_status == "connected"
 
-    return HealthResponse(
-        status=overall_status,
-        version="0.1.0",
-        qdrant=qdrant_status,
-        ollama=ollama_status,
+    if is_healthy:
+        response.status_code = status.HTTP_200_OK
+        return HealthResponse(
+            status="ok",
+            qdrant=qdrant_status,
+            ollama=ollama_status,
+            details=None,
+        )
+
+    # Return HTTP 503 if any dependent service is down
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "status": "degraded",
+            "qdrant": qdrant_status,
+            "ollama": ollama_status,
+            "details": details,
+        },
     )
+
+
+@app.post(
+    "/ingest",
+    response_model=IngestResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Ingestion"],
+)
+async def ingest(request: IngestRequest | None = None) -> IngestResponse:
+    """Trigger idempotent ingestion and index update in Qdrant."""
+    global ingestion_pipeline
+    if ingestion_pipeline is None:
+        ingestion_pipeline = IngestionPipeline()
+
+    force_fetch = request.force if request else False
+    try:
+        stats = ingestion_pipeline.run(force_fetch=force_fetch)
+        return IngestResponse(
+            inserted=stats.inserted,
+            updated=stats.updated,
+            skipped=stats.skipped,
+            total_chunks=stats.total_chunks,
+            duration_seconds=stats.duration_seconds,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error executing ingestion pipeline: {exc}",
+        ) from exc
 
 
 @app.post(
@@ -136,15 +203,96 @@ async def health() -> HealthResponse:
     tags=["RAG"],
 )
 async def ask(request: AskRequest) -> AskResponse:
-    """Answer technical Spring Boot question using hybrid RAG retrieval."""
-    global rag_service
-    if rag_service is None:
-        rag_service = RagService()
+    """Answer technical Spring Boot question using hybrid retrieval and grounding."""
+    global hybrid_retriever, ollama_generator
+    if hybrid_retriever is None:
+        hybrid_retriever = HybridRetriever()
+    if ollama_generator is None:
+        ollama_generator = OllamaGenerator()
 
+    total_start = time.perf_counter()
+    question = request.question or request.query or ""
+    if not question.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Field 'question' cannot be empty.",
+        )
+
+    # 1. Hybrid Retrieval
+    retrieval_start = time.perf_counter()
+    retrieved_chunks = hybrid_retriever.retrieve(
+        query=question,
+        spring_version=request.spring_version or settings.spring_version,
+        top_k=request.top_k or settings.top_k,
+        score_threshold=request.score_threshold,
+    )
+    retrieval_ms = round((time.perf_counter() - retrieval_start) * 1000, 2)
+
+    active_model = request.model or settings.llm_model
+
+    # 2. Short-circuit if context is completely empty
+    if not retrieved_chunks:
+        total_ms = round((time.perf_counter() - total_start) * 1000, 2)
+        return AskResponse(
+            answer=f"{ABSTENTION_PHRASE} para responder a esta pergunta.",
+            abstained=True,
+            citations=[],
+            chunks_used=[],
+            telemetry=Telemetry(
+                retrieval_ms=retrieval_ms,
+                generation_ms=0.0,
+                total_ms=total_ms,
+                model=active_model,
+            ),
+        )
+
+    # 3. Format context chunks
+    chunks_used = [
+        ChunkPreview(
+            chunk_id=c.id,
+            section_title=c.section_title,
+            doc_url=c.doc_url,
+            score=c.score,
+            module=c.module,
+            has_code=c.has_code,
+            text_preview=c.content[:200] + ("..." if len(c.content) > 200 else ""),
+        )
+        for c in retrieved_chunks
+    ]
+
+    # 4. Strict grounding prompt
+    system_prompt, user_prompt = build_rag_prompt(
+        query=question,
+        chunks=retrieved_chunks,
+    )
+
+    # 5. LLM Inference
     try:
-        return await rag_service.answer_question(request)
+        answer_text, generation_ms = await ollama_generator.generate_response(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model_name=request.model,
+            temperature=request.temperature,
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error executing RAG pipeline: {exc}",
+            detail=f"Ollama generation failure: {exc}",
         ) from exc
+
+    total_ms = round((time.perf_counter() - total_start) * 1000, 2)
+    abstained = is_abstention_response(answer_text)
+    citations = [] if abstained else parse_citations(answer_text, retrieved_chunks)
+
+    return AskResponse(
+        answer=answer_text,
+        abstained=abstained,
+        citations=citations,
+        chunks_used=chunks_used,
+        telemetry=Telemetry(
+            retrieval_ms=retrieval_ms,
+            generation_ms=generation_ms,
+            total_ms=total_ms,
+            model=active_model,
+        ),
+    )
