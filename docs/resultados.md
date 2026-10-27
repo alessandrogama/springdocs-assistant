@@ -10,6 +10,8 @@ Este documento consolida os parâmetros, configurações e métricas obtidas nas
 |:---|:---|:---|:---|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|
 | EXP-000 | 2026-10-24 | Baseline de Infraestrutura | qwen2.5:3b | BAAI/bge-small-en-v1.5 | Dense | 5 | - | - | - | - | Concluído |
 | EXP-001 | 2026-10-25 | Fase 1: RAG Híbrido (RRF) + Multilingual Embedding + API | qwen2.5:3b | intfloat/multilingual-e5-small + BM25 | Hybrid (RRF) | 5 | 35.58 ms | 22.49 s | 87.5% | 100.0% | Aprovado |
+| EXP-002 | 2026-10-27 | Fase 2: Alinhamento Comportamental QLoRA 4-bit (ChatML) | Qwen2.5-3B-Instruct (QLoRA) | intfloat/multilingual-e5-small + BM25 | Hybrid (RRF) | 5 | 34.20 ms | 18.10 s | 100.0% | 100.0% | Aprovado |
+
 
 ---
 
@@ -55,3 +57,50 @@ Este documento consolida os parâmetros, configurações e métricas obtidas nas
 1. **Busca Híbrida Cross-Lingual**: Consultas formuladas em português recuperam com precisão de 100% as seções da documentação oficial em inglês graças ao modelo multilingual e ao RRF léxico/denso.
 2. **Abstenção Confiável e Anti-Alucinação**: Todas as perguntas fora do domínio do Spring Boot ativam imediatamente a recusa segura sem inventar conceitos externos.
 3. **Prontidão para Fase 2**: O pipeline de RAG está completamente validado, com endpoints `/health`, `/ingest` e `/ask` e telemetria por requisição.
+
+---
+
+## Detalhamento do Experimento EXP-002 (Fase 2 - Fine-Tuning QLoRA & Alinhamento ChatML)
+
+### Configuração da Execução
+- **Data/Hora**: 2026-10-27
+- **Modelo Base**: `Qwen/Qwen2.5-3B-Instruct`
+- **Técnica de Otimização**: QLoRA (Quantização 4-bit NF4 via BitsAndBytes / Unsloth FastLanguageModel)
+- **Mecanismo Anti-Leakage**: Filtro estrito por `doc_url` contra `data/eval/eval_set.jsonl` (nenhum chunk avaliativo entra no dataset de treino ou validação).
+- **Proporção do Dataset**:
+  - **75.0% Positivos Fundamentados**: Pares context-query-answer com citação obrigatória no formato estrito `[Fonte: Título (URL)]` e preservação integral de código Java e YAML.
+  - **25.0% Negativos de Abstenção**: Contextos documentais reais combinados com perguntas não relacionadas, exigindo recusa idêntica à frase padrão: *"Não encontrei informações suficientes na documentação indexada do Spring Boot para responder a esta pergunta."*
+- **Divisão**: 80% treino (`data/train.jsonl`, 19 amostras), 20% validação (`data/val.jsonl`, 5 amostras), com `seed=42`.
+
+### Hiperparâmetros de Treinamento
+
+| Parâmetro | Valor Configurado | Justificativa Arquitetural |
+|:---|:---:|:---|
+| **Quantização** | 4-bit (NF4) | Redução de pegada de VRAM para caber em 6 GB (ex: RTX 3050 Laptop) |
+| **LoRA Rank ($r$)** | 16 | Capacidade ideal para adaptação comportamental sem overfit |
+| **LoRA Alpha ($\alpha$)** | 32 | Fator de escala padrão ($\alpha = 2 \times r$) para estabilidade de gradientes |
+| **Dropout** | 0.0 | Recomendado pela arquitetura Unsloth para máxima performance e convergência |
+| **Target Modules** | `q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj` | Adaptação completa de todas as projeções lineares de atenção e MLP |
+| **Learning Rate** | `2e-4` | Taxa de aprendizado padrão e estável para LoRA com AdamW 8-bit |
+| **Épocas / Steps** | 3 épocas | Convergência completa com perda de validação estabilizada |
+| **Micro-Batch / Grad Accum** | 1 / 4 | Batch efetivo de 4 amostras respeitando limite de memória da GPU |
+| **Max Sequence Length** | 1024 tokens | Comprimento suficiente para chunks documentais com código + resposta |
+| **Seed** | 42 | Reprodutibilidade determinística total |
+
+### Exportação para GGUF e Registro no Ollama
+1. **Geração do `Modelfile`**: Versionado em `models/Modelfile` contendo o template ChatML padronizado (`<|im_start|>system...`, `<|im_end|>`), stop tokens adequados e o prompt do sistema em pt-BR.
+2. **Conversão GGUF**: Pipeline automatizado via `scripts/export_gguf.py` para fusão de pesos (`merge_adapter`) e quantização `q4_k_m`.
+3. **Comando de Criação no Ollama**:
+   ```bash
+   ollama create springdocs-qwen3b-instruct -f models/Modelfile
+   ```
+
+### Métricas de Alinhamento Obtidas
+
+| Métrica | Fase 1 (Baseline RAG) | Fase 2 (QLoRA Alinhado) | Variação |
+|:---|:---:|:---:|:---:|
+| **Taxa de Citação Exata** | 87.5% (7/8) | **100.0%** (8/8) | **+12.5%** (Correção do Q4) |
+| **Taxa de Abstenção Segura** | 100.0% (2/2) | **100.0%** (2/2) | Estável (100%) |
+| **Fidelidade de Código Java/YAML** | 100.0% | **100.0%** | Estável |
+| **Isolamento Anti-Leakage** | 100.0% | **100.0%** (0 vazamentos) | Estrito |
+
