@@ -142,9 +142,55 @@ def test_dataset_generator_anti_leakage_rejection(tmp_path: Path) -> None:
 
 def test_dataset_generation_proportions_and_content(tmp_path: Path) -> None:
     """Verify generated dataset proportions (75% positive, 25% negative) and grounding citations."""
+    eval_file = tmp_path / "eval_set.jsonl"
+    eval_file.write_text(
+        json.dumps({
+            "id": "EVAL-001",
+            "doc_url": "https://docs.spring.io/forbidden-section.html",
+            "section_title": "Forbidden Section",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+
+    chunks_file = tmp_path / "chunks.jsonl"
+    sample_titles = [
+        "Exposing Actuator Endpoints",
+        "Health Endpoint Details",
+        "Building RESTful Web Services",
+        "Jackson JSON Serialization",
+        "Connection Pool Auto-configuration",
+        "Spring Data JPA Repositories",
+        "Configuring SecurityFilterChain",
+        "Declaring Auto-configurations in Spring Boot 3.x",
+        "Type-Safe Configuration Properties",
+        "Enabling Virtual Threads",
+        "Distributed Tracing Configuration",
+        "RestClient vs WebClient Comparison",
+    ]
+    chunks = [
+        DocumentChunk(
+            id=f"chunk-{i}",
+            doc_url=f"https://docs.spring.io/spring-boot/reference/section-{i}.html",
+            spring_version="3.4.0",
+            section_title=title,
+            module="core",
+            content=f"Documentation content for {title}.\n\n```java\nclass Demo{i} {{}}\n```",
+            content_hash=f"hash-{i}",
+            has_code=True,
+            chunk_index=0,
+            parent_section=title,
+        )
+        for i, title in enumerate(sample_titles)
+    ]
+
+    with open(chunks_file, "w", encoding="utf-8") as f:
+        for c in chunks:
+            f.write(json.dumps(c.model_dump(), ensure_ascii=False) + "\n")
+
     config = DatasetConfig(
-        eval_path=Path("data/eval/eval_set.jsonl"),
-        processed_chunks_path=Path("data/processed/chunks.jsonl"),
+        eval_path=eval_file,
+        processed_chunks_path=chunks_file,
         train_output_path=tmp_path / "train.jsonl",
         val_output_path=tmp_path / "val.jsonl",
         positive_ratio=0.75,
